@@ -144,25 +144,37 @@ export function importLibraryJSON(json: string): { added: number; updated: numbe
   return { added, updated };
 }
 
-// Merge songs pulled from the cloud into the local cache (cloud wins by title),
-// then notify the UI to refresh. Does NOT write back to the cloud.
-export function mergeCloudSongs(cloudSongs: LibrarySong[]): { added: number; updated: number } {
-  const lib = loadLibrary();
-  const byTitle = new Map(lib.map((e, i) => [normalize(e.title), i] as const));
-  let added = 0, updated = 0;
+// Reconcile the local cache against the cloud (cloud is authoritative for the
+// shared catalog). Result = all cloud songs + the user's own local songs that
+// haven't been uploaded yet. Stale built-in placeholders (seed:true, no longer
+// in the cloud — e.g. a simplified title replaced by a traditional one) are
+// dropped so they don't linger as duplicates. Does NOT write back to the cloud.
+export function mergeCloudSongs(cloudSongs: LibrarySong[]): { total: number } {
+  const local = loadLibrary();
+  const result: LibrarySong[] = [];
+  const used = new Set<string>();
+
   for (const s of cloudSongs) {
     if (!s?.title) continue;
     const key = normalize(s.title);
-    const at = byTitle.get(key);
-    const entry: LibrarySong = { ...s, bg: s.bg ?? null, seed: false };
-    if (at != null) { entry.id = lib[at].id; lib[at] = entry; updated++; }
-    else { lib.unshift(entry); byTitle.set(key, 0); added++; }
+    if (used.has(key)) continue;
+    used.add(key);
+    result.push({ ...s, bg: s.bg ?? null, seed: false });
   }
+  // Keep local songs the cloud doesn't have, but only real (non-seed) ones —
+  // those are the user's offline edits still waiting to sync up.
+  for (const s of local) {
+    const key = normalize(s.title);
+    if (!key || used.has(key) || s.seed) continue;
+    used.add(key);
+    result.push(s);
+  }
+
   try {
-    localStorage.setItem(LIB_KEY, JSON.stringify(lib.slice(0, 1000)));
+    localStorage.setItem(LIB_KEY, JSON.stringify(result.slice(0, 1000)));
   } catch {}
   emitChange();
-  return { added, updated };
+  return { total: result.length };
 }
 
 const normalize = (s: string) =>
