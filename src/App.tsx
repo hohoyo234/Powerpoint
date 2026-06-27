@@ -2,17 +2,45 @@ import { useEffect, useState } from 'react';
 import ManualMode from './modes/ManualMode';
 import AutoMode from './modes/AutoMode';
 import LibraryMode from './modes/LibraryMode';
-import { seedLibrary } from './lib/songLibrary';
+import { seedLibrary, setCloudHooks, mergeCloudSongs, loadLibrary } from './lib/songLibrary';
 import { SEED_SONGS, SEED_VERSION } from './lib/seedSongs';
+import { cloudEnabled, cloudFetchAll, cloudUpsert, cloudDelete, cloudBulkInsert } from './lib/cloud';
 
 type Mode = 'auto' | 'manual' | 'library';
+
+const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '').trim();
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('ppt_mode') as Mode) || 'auto');
 
-  // Top up the local song "database" with the built-in catalog (once per version).
   useEffect(() => {
+    // 1) Seed the local catalog once per version.
     seedLibrary(SEED_SONGS, SEED_VERSION);
+
+    // 2) Cloud sync (shared library). Fire-and-forget; the app works offline if
+    //    any of this fails.
+    if (!cloudEnabled) return;
+    setCloudHooks({
+      upsert: (s) => { cloudUpsert(s).catch(() => {}); },
+      remove: (t) => { cloudDelete(t).catch(() => {}); },
+    });
+    (async () => {
+      try {
+        const cloud = await cloudFetchAll();
+        if (cloud.length === 0) {
+          // First ever run: populate the cloud with the local (seeded) library.
+          await cloudBulkInsert(loadLibrary());
+        } else {
+          // Pull cloud → local (cloud wins), then push any local-only songs up.
+          mergeCloudSongs(cloud);
+          const have = new Set(cloud.map((s) => norm(s.title)));
+          const localOnly = loadLibrary().filter((s) => s.title && !have.has(norm(s.title)));
+          if (localOnly.length) await cloudBulkInsert(localOnly);
+        }
+      } catch (e) {
+        console.warn('Cloud sync skipped:', e);
+      }
+    })();
   }, []);
 
   const change = (m: Mode) => {

@@ -22,6 +22,25 @@ export interface LibrarySong {
 
 const LIB_KEY = 'worship_song_library_v1';
 
+// ── Cloud write-through hooks (registered by App when cloud sync is on) ───────
+// Kept as a callback registry so this module never imports the cloud client —
+// no import cycle, and it still works fully offline when no hooks are set.
+type CloudHooks = { upsert?: (s: LibrarySong) => void; remove?: (title: string) => void };
+let cloudHooks: CloudHooks = {};
+export function setCloudHooks(h: CloudHooks) {
+  cloudHooks = h;
+}
+// Let open UI (the 歌库 page) refresh after a background cloud sync lands.
+const LIB_EVENT = 'worship-library-updated';
+export function onLibraryChange(fn: () => void): () => void {
+  const h = () => fn();
+  window.addEventListener(LIB_EVENT, h);
+  return () => window.removeEventListener(LIB_EVENT, h);
+}
+function emitChange() {
+  try { window.dispatchEvent(new Event(LIB_EVENT)); } catch {}
+}
+
 export function loadLibrary(): LibrarySong[] {
   try {
     const raw = localStorage.getItem(LIB_KEY);
@@ -51,14 +70,18 @@ export function saveToLibrary(song: Omit<LibrarySong, 'id' | 'updatedAt'> & { id
   try {
     localStorage.setItem(LIB_KEY, JSON.stringify(lib.slice(0, 1000)));
   } catch {}
+  cloudHooks.upsert?.(idx >= 0 ? lib[idx] : entry);
   return entry;
 }
 
 export function deleteFromLibrary(id: string) {
-  const lib = loadLibrary().filter((e) => e.id !== id);
+  const all = loadLibrary();
+  const removed = all.find((e) => e.id === id);
+  const lib = all.filter((e) => e.id !== id);
   try {
     localStorage.setItem(LIB_KEY, JSON.stringify(lib));
   } catch {}
+  if (removed?.title) cloudHooks.remove?.(removed.title);
 }
 
 // Edit an existing entry by id (used by the 歌库 management page).
@@ -70,6 +93,7 @@ export function updateById(id: string, patch: Partial<LibrarySong>) {
   try {
     localStorage.setItem(LIB_KEY, JSON.stringify(lib));
   } catch {}
+  cloudHooks.upsert?.(lib[idx]);
   return lib[idx];
 }
 
@@ -112,10 +136,32 @@ export function importLibraryJSON(json: string): { added: number; updated: numbe
     };
     if (at != null) { lib[at] = norm; updated++; }
     else { lib.unshift(norm); byTitle.set(key, 0); added++; }
+    cloudHooks.upsert?.(norm);
   }
   try {
     localStorage.setItem(LIB_KEY, JSON.stringify(lib.slice(0, 1000)));
   } catch {}
+  return { added, updated };
+}
+
+// Merge songs pulled from the cloud into the local cache (cloud wins by title),
+// then notify the UI to refresh. Does NOT write back to the cloud.
+export function mergeCloudSongs(cloudSongs: LibrarySong[]): { added: number; updated: number } {
+  const lib = loadLibrary();
+  const byTitle = new Map(lib.map((e, i) => [normalize(e.title), i] as const));
+  let added = 0, updated = 0;
+  for (const s of cloudSongs) {
+    if (!s?.title) continue;
+    const key = normalize(s.title);
+    const at = byTitle.get(key);
+    const entry: LibrarySong = { ...s, bg: s.bg ?? null, seed: false };
+    if (at != null) { entry.id = lib[at].id; lib[at] = entry; updated++; }
+    else { lib.unshift(entry); byTitle.set(key, 0); added++; }
+  }
+  try {
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib.slice(0, 1000)));
+  } catch {}
+  emitChange();
   return { added, updated };
 }
 

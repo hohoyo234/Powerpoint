@@ -1,7 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadLibrary, updateById, deleteFromLibrary, addBlankSong,
-  exportLibraryJSON, importLibraryJSON, type LibrarySong,
+  exportLibraryJSON, importLibraryJSON, onLibraryChange, type LibrarySong,
 } from '../lib/songLibrary';
 
 type Filter = 'all' | 'lyrics' | 'titleOnly';
@@ -15,6 +15,9 @@ export default function LibraryMode({ modeToggle }: { modeToggle: React.ReactNod
   const importRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => setSongs(loadLibrary());
+
+  // Re-read when a background cloud sync updates the local cache.
+  useEffect(() => onLibraryChange(refresh), []);
   const flash = (m: string, ms = 2400) => { setStatus(m); window.clearTimeout((flash as any)._t); (flash as any)._t = window.setTimeout(() => setStatus(null), ms); };
 
   const filtered = useMemo(() => {
