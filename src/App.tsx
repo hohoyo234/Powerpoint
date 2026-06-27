@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import ManualMode from './modes/ManualMode';
 import AutoMode from './modes/AutoMode';
+import LibraryMode from './modes/LibraryMode';
 import { seedLibrary } from './lib/songLibrary';
 import { SEED_SONGS, SEED_VERSION } from './lib/seedSongs';
 
-type Mode = 'auto' | 'manual';
+type Mode = 'auto' | 'manual' | 'library';
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('ppt_mode') as Mode) || 'auto');
@@ -29,15 +30,19 @@ export default function App() {
         </h1>
       </div>
       <div className="flex bg-white rounded-2xl p-1 border border-[#E5E0DA]/60 shadow-sm ml-1">
-        <button onClick={() => change('auto')} className={`px-4 h-9 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${mode === 'auto' ? 'bg-emerald-600 text-white shadow' : 'text-outline/50 hover:text-[#2C2C2C]'}`}>
-          <span className="material-symbols-outlined text-[16px]">auto_awesome</span>Auto
+        <button onClick={() => change('auto')} className={`px-3.5 h-9 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${mode === 'auto' ? 'bg-emerald-600 text-white shadow' : 'text-outline/50 hover:text-[#2C2C2C]'}`}>
+          <span className="material-symbols-outlined text-[16px]">auto_awesome</span><span className="hidden sm:inline">Auto</span>
         </button>
-        <button onClick={() => change('manual')} className={`px-4 h-9 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${mode === 'manual' ? 'bg-emerald-600 text-white shadow' : 'text-outline/50 hover:text-[#2C2C2C]'}`}>
-          <span className="material-symbols-outlined text-[16px]">tune</span>手动
+        <button onClick={() => change('manual')} className={`px-3.5 h-9 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${mode === 'manual' ? 'bg-emerald-600 text-white shadow' : 'text-outline/50 hover:text-[#2C2C2C]'}`}>
+          <span className="material-symbols-outlined text-[16px]">tune</span><span className="hidden sm:inline">手动</span>
+        </button>
+        <button onClick={() => change('library')} className={`px-3.5 h-9 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${mode === 'library' ? 'bg-emerald-600 text-white shadow' : 'text-outline/50 hover:text-[#2C2C2C]'}`}>
+          <span className="material-symbols-outlined text-[16px]">library_music</span><span className="hidden sm:inline">歌库</span>
         </button>
       </div>
     </div>
   );
 
+  if (mode === 'library') return <LibraryMode modeToggle={modeToggle} />;
   return mode === 'auto' ? <AutoMode modeToggle={modeToggle} /> : <ManualMode modeToggle={modeToggle} />;
 }

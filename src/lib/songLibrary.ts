@@ -61,6 +61,64 @@ export function deleteFromLibrary(id: string) {
   } catch {}
 }
 
+// Edit an existing entry by id (used by the 歌库 management page).
+export function updateById(id: string, patch: Partial<LibrarySong>) {
+  const lib = loadLibrary();
+  const idx = lib.findIndex((e) => e.id === id);
+  if (idx < 0) return null;
+  lib[idx] = { ...lib[idx], ...patch, id: lib[idx].id, updatedAt: Date.now(), seed: false };
+  try {
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib));
+  } catch {}
+  return lib[idx];
+}
+
+// Add a brand-new (empty) entry and return it.
+export function addBlankSong(): LibrarySong {
+  const entry: LibrarySong = {
+    id: crypto.randomUUID(), title: '', englishTitle: '', producer: '',
+    lyrics: '', englishLyrics: '', bg: null, updatedAt: Date.now(),
+  };
+  const lib = loadLibrary();
+  lib.unshift(entry);
+  try {
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib));
+  } catch {}
+  return entry;
+}
+
+// Export the whole library as a JSON string (for backup / moving devices).
+export function exportLibraryJSON(): string {
+  return JSON.stringify({ kind: 'worship-ppt-library', version: 1, songs: loadLibrary() }, null, 2);
+}
+
+// Import a library JSON, merging by title (imported wins). Returns #added/#updated.
+export function importLibraryJSON(json: string): { added: number; updated: number } {
+  const parsed = JSON.parse(json);
+  const incoming: LibrarySong[] = Array.isArray(parsed) ? parsed : parsed.songs;
+  if (!Array.isArray(incoming)) throw new Error('格式不正确');
+  const lib = loadLibrary();
+  const byTitle = new Map(lib.map((e, i) => [normalize(e.title), i] as const));
+  let added = 0, updated = 0;
+  for (const s of incoming) {
+    if (!s?.title) continue;
+    const key = normalize(s.title);
+    const at = byTitle.get(key);
+    const norm: LibrarySong = {
+      id: at != null ? lib[at].id : s.id || crypto.randomUUID(),
+      title: s.title, englishTitle: s.englishTitle || '', producer: s.producer || '',
+      lyrics: s.lyrics || '', englishLyrics: s.englishLyrics || '', bg: s.bg ?? null,
+      updatedAt: Date.now(), seed: false,
+    };
+    if (at != null) { lib[at] = norm; updated++; }
+    else { lib.unshift(norm); byTitle.set(key, 0); added++; }
+  }
+  try {
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib.slice(0, 1000)));
+  } catch {}
+  return { added, updated };
+}
+
 const normalize = (s: string) =>
   (s || '').toLowerCase().replace(/[\s,，。.、!！?？]/g, '').trim();
 
