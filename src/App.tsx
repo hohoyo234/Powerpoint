@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ManualMode from './modes/ManualMode';
 import AutoMode from './modes/AutoMode';
+import { seedLibrary } from './lib/songLibrary';
+import { SEED_SONGS, SEED_VERSION } from './lib/seedSongs';
 
 type Mode = 'auto' | 'manual';
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('ppt_mode') as Mode) || 'auto');
+
+  // Top up the local song "database" with the built-in catalog (once per version).
+  useEffect(() => {
+    seedLibrary(SEED_SONGS, SEED_VERSION);
+  }, []);
 
   const change = (m: Mode) => {
     setMode(m);

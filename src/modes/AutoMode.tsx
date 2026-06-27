@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { expandSongSections, paginateLyrics } from '../lib/pptTheme';
 import type { BgOption, SongInput, DeckSettings } from '../lib/pptGenerator';
 import { BACKGROUND_OPTIONS, pollinationsBg } from '../lib/backgrounds';
-import { searchLibrary, saveToLibrary } from '../lib/songLibrary';
+import { searchLibrary, saveToLibrary, libraryStats } from '../lib/songLibrary';
 import { detectChorus, deriveBackground, parseEntryLine } from '../lib/autoStructure';
 import { exportMerged, exportZip } from '../lib/exporter';
 
@@ -20,7 +20,7 @@ interface AutoSong {
   matched: boolean;
 }
 
-const AUTO_SETTINGS: Omit<DeckSettings, 'selectedBg' | 'showSongTitle' | 'unifyBackground'> = {
+const AUTO_SETTINGS: Omit<DeckSettings, 'selectedBg' | 'showSongTitle' | 'unifyBackground' | 'slideSize'> = {
   linesPerSlide: 2,
   lyricColor: '#FFFFFF',
   translationColor: '#A7F3D0',
@@ -44,10 +44,12 @@ export default function AutoMode({ modeToggle }: { modeToggle: React.ReactNode }
   const [withTitle, setWithTitle] = useState(true);
   const [merge, setMerge] = useState(true); // true = 合并一个PPT, false = ZIP 分开
   const [unifyBg, setUnifyBg] = useState(false);
+  const [slideSize, setSlideSize] = useState<DeckSettings['slideSize']>('16:9');
   const [deckName, setDeckName] = useState('Sunday Worship');
 
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const libStats = useMemo(() => libraryStats(), [step]);
 
   const flash = (msg: string, ms = 2800) => {
     setStatus(msg);
@@ -76,7 +78,8 @@ export default function AutoMode({ modeToggle }: { modeToggle: React.ReactNode }
         return {
           id: uid(), raw, title: s.title, englishTitle: s.englishTitle || '',
           producer: s.producer || parsed.producer, lyrics: s.lyrics, englishLyrics: s.englishLyrics || '',
-          bg: deriveBackground(s.title, s.lyrics), matched: true,
+          // Reuse the background saved with this song last time; else derive one.
+          bg: s.bg || deriveBackground(s.title, s.lyrics), matched: true,
         };
       }
       return {
@@ -121,6 +124,7 @@ export default function AutoMode({ modeToggle }: { modeToggle: React.ReactNode }
       const settings: DeckSettings = {
         ...AUTO_SETTINGS,
         selectedBg: unifyBg ? valid[0].bg : BACKGROUND_OPTIONS[0],
+        slideSize,
         showSongTitle: withTitle,
         unifyBackground: unifyBg,
       };
@@ -131,8 +135,8 @@ export default function AutoMode({ modeToggle }: { modeToggle: React.ReactNode }
       const res = merge
         ? await exportMerged(songInputs, settings, deckName)
         : await exportZip(songInputs, settings, deckName);
-      // Grow the local "database".
-      valid.forEach((s) => saveToLibrary({ title: s.title, englishTitle: s.englishTitle, producer: s.producer, lyrics: s.lyrics, englishLyrics: s.englishLyrics }));
+      // Grow the local "database" — including each song's background image.
+      valid.forEach((s) => saveToLibrary({ title: s.title, englishTitle: s.englishTitle, producer: s.producer, lyrics: s.lyrics, englishLyrics: s.englishLyrics, bg: s.bg }));
       flash(res.bgEmbedFailed
         ? '⚠️ 部分背景图无法加载，已用纯色代替（文件已导出）'
         : merge ? '✅ 已下载合并 PPT' : `✅ 已打包下载 ${res.fileCount} 个 PPT（ZIP）`, 4500);
@@ -188,7 +192,8 @@ export default function AutoMode({ modeToggle }: { modeToggle: React.ReactNode }
         {step === 'entries' && (
           <div className="max-w-2xl mx-auto">
             <h2 className="font-serif font-black text-3xl text-[#2C2C2C] mb-2 text-center">粘贴 {count} 首歌</h2>
-            <p className="text-outline/50 font-medium mb-10 text-center text-sm">每格写一句就行:歌名、一句歌词、或「歌名 / 制作人」。系统会去你的歌库里找。</p>
+            <p className="text-outline/50 font-medium mb-2 text-center text-sm">每格写一句就行:歌名、一句歌词、或「歌名 / 制作人」。系统会去你的歌库里找。</p>
+            <p className="text-emerald-600/70 font-bold mb-10 text-center text-[11px] uppercase tracking-wider">歌库已有 {libStats.total} 首 · {libStats.withLyrics} 首带歌词</p>
             <div className="space-y-3">
               {entries.map((v, i) => (
                 <div key={i} className="flex items-center gap-3 bg-white rounded-2xl border border-[#E5E0DA]/60 px-4 py-3 shadow-sm focus-within:border-emerald-500 transition-all">
@@ -246,6 +251,14 @@ export default function AutoMode({ modeToggle }: { modeToggle: React.ReactNode }
 
               <OptionRow label="背景" desc="每首用各自的背景,还是全套统一">
                 <Seg options={[{ v: false, t: '各自背景' }, { v: true, t: '统一背景' }]} value={unifyBg} onChange={setUnifyBg} />
+              </OptionRow>
+
+              <OptionRow label="尺寸" desc="宽屏 16:9 (1920×1080) 或标准 4:3">
+                <div className="flex bg-[#F9F7F5] rounded-xl p-1 shrink-0">
+                  {(['16:9', '4:3'] as const).map((v) => (
+                    <button key={v} onClick={() => setSlideSize(v)} className={`px-3.5 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${slideSize === v ? 'bg-emerald-600 text-white shadow' : 'text-outline/50 hover:text-[#2C2C2C]'}`}>{v}</button>
+                  ))}
+                </div>
               </OptionRow>
             </div>
 

@@ -21,6 +21,7 @@ interface PersistShape {
 
 const DEFAULT_SETTINGS: DeckSettings = {
   selectedBg: BACKGROUND_OPTIONS[0],
+  slideSize: '16:9',
   linesPerSlide: 2,
   lyricColor: '#FFFFFF',
   translationColor: '#A7F3D0',
@@ -151,8 +152,13 @@ export default function ManualMode({ modeToggle }: { modeToggle: React.ReactNode
     try {
       const { blob, bgEmbedFailed } = await generateDeck(valid, settings);
       downloadBlob(blob, fileName);
-      // Feed the local "database" so Auto mode can find these later.
-      valid.forEach((s) => saveToLibrary({ title: s.title, englishTitle: s.englishTitle, lyrics: s.lyrics, englishLyrics: s.englishLyrics }));
+      // Feed the local "database" — including the chosen background image.
+      valid.forEach((s) =>
+        saveToLibrary({
+          title: s.title, englishTitle: s.englishTitle, lyrics: s.lyrics, englishLyrics: s.englishLyrics,
+          bg: settings.unifyBackground ? settings.selectedBg : s.customBg || settings.selectedBg,
+        }),
+      );
       flash(bgEmbedFailed ? '⚠️ 部分背景图无法加载，已用纯色代替（文件已导出）' : `✅ 已下载 ${fileName}`, 4000);
     } catch (err) {
       console.error('Generate failed', err);
@@ -285,6 +291,14 @@ export default function ManualMode({ modeToggle }: { modeToggle: React.ReactNode
           </Panel>
 
           <Panel title="排版">
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[#2C2C2C]">幻灯片尺寸</span>
+              <div className="flex gap-1.5">
+                {([['16:9', '宽屏 16:9'], ['4:3', '标准 4:3']] as const).map(([v, t]) => (
+                  <button key={v} onClick={() => set('slideSize', v)} className={`flex-1 h-9 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${settings.slideSize === v ? 'bg-emerald-600 text-white' : 'bg-[#F9F7F5] text-outline/50 hover:bg-[#E5E0DA]'}`}>{t}</button>
+                ))}
+              </div>
+            </div>
             <SliderRow label="每页行数" value={settings.linesPerSlide} min={1} max={6} onChange={(v) => set('linesPerSlide', v)} />
             <SliderRow label="歌词字号" value={settings.lyricFontSize} min={20} max={72} onChange={(v) => set('lyricFontSize', v)} />
             <SliderRow label="翻译字号" value={settings.translationFontSize} min={12} max={48} onChange={(v) => set('translationFontSize', v)} />
